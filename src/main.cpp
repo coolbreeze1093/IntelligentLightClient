@@ -27,19 +27,31 @@ const std::string value_deviceName = "deviceName";
 
 WiFiUDP udp;
 
-int brightness=0;
+int brightness = 0;
+
+bool isConnectedToLight = false;
 
 void setupWiFi()
 {
+  udp.stop();
+  WiFi.disconnect(true);
   WiFi.begin(ssid, password);
   Serial.println("Connecting to WiFi...");
+
   while (WiFi.status() != WL_CONNECTED)
   {
+    isConnectedToLight=false;
     delay(500);
     Serial.print(".");
   }
+
+  isConnectedToLight = true;
+
   WiFi.setAutoReconnect(true);
   Serial.println("\nConnected to WiFi!");
+  delay(1000);
+  
+  udp.begin(revPort);
 }
 
 void handlePacket(char *buffer, int len)
@@ -58,7 +70,7 @@ void handlePacket(char *buffer, int len)
   {
     int value = doc[value_brightness];
     // uint32_t _value = map(value, 0, 100, 0, 1024);
-    brightness=value;
+    brightness = value;
     m_pwm.write(value);
     Serial.printf("%s: %d\n", value_brightness.c_str(), value);
   }
@@ -80,7 +92,7 @@ void handlePacket(char *buffer, int len)
     udp.write((uint8_t *)jsonData.c_str(), jsonData.length());
     udp.endPacket();
   }
-  else if(_type == send_type_querylightInfo)
+  else if (_type == send_type_querylightInfo)
   {
     JsonDocument _senddoc;
     _senddoc[key_type] = send_type_lightInfo;
@@ -99,23 +111,43 @@ void handlePacket(char *buffer, int len)
   }
 }
 
+void reconnectWiFi()
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("WiFi disconnected, attempting to reconnect...");
+    setupWiFi();
+  }
+}
+
 void udpReceiveTask(void *param)
 {
   char buffer[255];
   while (true)
   {
-    int packetSize = udp.parsePacket();
-    if (packetSize > 0)
+    if (WiFi.status() == WL_DISCONNECTED)
     {
-      int len = udp.read(buffer, sizeof(buffer) - 1);
-      if (len > 0)
-      {
-        buffer[len] = '\0';
-        Serial.printf("Received packet from %s:%d\n", udp.remoteIP().toString().c_str(), udp.remotePort());
-        handlePacket(buffer, len);
-      }
+      delay(2000);
+      reconnectWiFi();
     }
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    else if(WiFi.status() == WL_CONNECTED){
+      int packetSize = udp.parsePacket();
+      if (packetSize > 0)
+      {
+        int len = udp.read(buffer, sizeof(buffer) - 1);
+        if (len > 0)
+        {
+          buffer[len] = '\0';
+          Serial.printf("Received packet from %s:%d\n", udp.remoteIP().toString().c_str(), udp.remotePort());
+          handlePacket(buffer, len);
+        }
+      }
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+    else 
+    {
+      
+    }
   }
 }
 
@@ -130,15 +162,9 @@ void setup()
   ESP32PWM::allocateTimer(3);
 
   m_pwm.attachPin(13, 10000, 10);
-  udp.begin(revPort);
 
-  for (size_t i = 0; i < 2; i++)
-  {
-    m_pwm.write(5);
-    delay(300);
-    m_pwm.write(0);
-    delay(300);
-  }
+  pinMode(2,OUTPUT);
+  
 
   xTaskCreatePinnedToCore(udpReceiveTask, "UDP Receive Task", 4096, NULL, 1, NULL, 1);
 }
@@ -146,5 +172,12 @@ void setup()
 void loop()
 {
   // 其他代码
+  if (isConnectedToLight)
+  {
+    digitalWrite(2,HIGH);
+  }
+  else{
+    digitalWrite(2,LOW);
+  }
   delay(500);
 }
