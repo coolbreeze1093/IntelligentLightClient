@@ -32,11 +32,11 @@ const std::string value_lightInfo = "lightInfo";
 
 const std::string specialConnector = "*&*";
 
-const std::map<std::string, ESP32PWM> lightMap{{"12", m_pwm_12}, {"13", m_pwm_13}, {"14", m_pwm_14}};
+std::map<std::string, ESP32PWM> lightMap{{"12", m_pwm_12}, {"13", m_pwm_13}, {"14", m_pwm_14}};
 
 WiFiUDP udp;
 
-std::map<std::string,int> brightnessMap{{"12",0},{"13",0},{"14",0}};
+std::map<std::string, int> brightnessMap;
 
 bool isConnectedToLight = false;
 
@@ -77,36 +77,41 @@ void handlePacket(char *buffer, int len)
   std::string _type = doc[key_type];
   if (_type == rev_type_lightInfo)
   {
-    std::string _lightName = doc[value_lightInfo];
-    std::vector<std::string> _LightVec = splitString(_lightName,specialConnector);
-    for(auto var:_LightVec)
-    {
-      int _value=doc[var];
-      brightnessMap.insert(std::make_pair<std::string,int>(var,_value));
-      lightMap[var].write(_value);
+    /*
+    {"type":"rev_type_lightInfo",
+    "value_lightInfo":{"12":33,"13":45}
     }
-    Serial.printf("%s: %d\n", value_brightness.c_str(), value);
+    */
+    JsonObject _lightInfo = doc[value_lightInfo].as<JsonObject>();
+    for (auto var : _lightInfo)
+    {
+      std::string _key = var.key().c_str();
+      int _value = var.value().as<int>();
+      brightnessMap[_key] = _value;
+      lightMap[_key].write(_value);
+    }
+    Serial.printf("%s\n", value_brightness.c_str());
   }
   else if (_type == rev_type_deviceList)
   {
+    /*{"type":"send_type_deviceList",
+    "value_deviceName":"flower",
+    "value_deviceIp":"127.0.0.1",
+    "value_lightInfo":[
+    "12","13"
+    ]
+    }*/
     JsonDocument _senddoc;
-    _senddoc[key_type] = send_type_deviceList;
-    _senddoc[value_deviceName] = "flower";
-    _senddoc[value_deviceIp] = WiFi.localIP().toString();
-    std::string _lightList;
-    int _i = 1;
+    JsonObject _root = _senddoc.to<JsonObject>();
+    _root[key_type] = send_type_deviceList;
+    _root[value_deviceName] = "flower";
+    _root[value_deviceIp] = WiFi.localIP().toString();
+    JsonArray _lightList=_root.createNestedArray(value_lightInfo);
+
     for (auto var : lightMap)
     {
-      _lightList += var.first;
-      if (_i < lightMap.count())
-      {
-        _lightList += specialConnector;
-      }
-
-      _i++;
+      _lightList.add<std::string>(var.first);
     }
-
-    _senddoc[value_lightInfo] = _lightList;
 
     String _remotip = doc[value_localip];
 
@@ -121,16 +126,29 @@ void handlePacket(char *buffer, int len)
   }
   else if (_type == send_type_querylightInfo)
   {
-    JsonDocument _senddoc;
-    _senddoc[key_type] = send_type_lightInfo;
-    std::string _lightName = doc[value_lightInfo];
-    std::vector<std::string> _LightVec = splitString(_lightName,specialConnector);
-    for(auto var:_LightVec)
+    /*
     {
-      _senddoc[var]=brightnessMap[var];
+    "value_lightInfo":["12","13"]
     }
-    _senddoc[value_lightInfo] = _lightName;
-    
+    */
+    /*
+    {
+    "type":"send_type_lightInfo",
+    "value_lightInfo":{"12":12,"13,33"}
+    }
+    */
+    JsonDocument _senddoc;
+    JsonObject _root = _senddoc.to<JsonObject>();
+    _root[key_type] = send_type_lightInfo;
+    JsonObject _lightInfo=_root.createNestedObject(value_lightInfo);
+
+    JsonArray _lightName = doc[value_lightInfo].as<JsonArray>();
+    for (auto var : _lightName)
+    {
+      std::string _var=var.as<std::string>();
+      _lightInfo[_var] = brightnessMap[_var];
+    }
+
     String _remotip = doc[value_localip];
 
     IPAddress _ipa;
