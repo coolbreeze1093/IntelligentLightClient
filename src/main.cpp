@@ -7,9 +7,9 @@
 #include <map>
 #include "utility.h"
 
-ESP32PWM m_pwm_13;
-ESP32PWM m_pwm_12;
-ESP32PWM m_pwm_14;
+ESP32PWM *m_pwm_13=new ESP32PWM;
+ESP32PWM *m_pwm_12=new ESP32PWM;
+ESP32PWM *m_pwm_14=new ESP32PWM;
 const char *ssid = "secret";
 const char *password = "dahuang123";
 
@@ -30,7 +30,7 @@ const std::string value_ledLightList = "lightInfo";
 
 const std::string specialConnector = "*&*";
 
-std::map<std::string, ESP32PWM> lightMap{{"12", m_pwm_12}, {"13", m_pwm_13}, {"14", m_pwm_14}};
+std::map<std::string, ESP32PWM*> lightMap{{"12", m_pwm_12}, {"13", m_pwm_13}, {"14", m_pwm_14}};
 
 WiFiUDP udp;
 
@@ -86,7 +86,7 @@ void handlePacket(char *buffer, int len)
       std::string _key = var.key().c_str();
       int _value = var.value().as<int>();
       brightnessMap[_key] = _value;
-      lightMap[_key].write(_value);
+      lightMap[_key]->write(_value);
     }
     Serial.printf("%s\n", value_brightness.c_str());
   }
@@ -105,6 +105,7 @@ void handlePacket(char *buffer, int len)
     _root[value_deviceName] = "flower";
     _root[value_deviceIp] = WiFi.localIP().toString();
     JsonArray _lightList=_root.createNestedArray(value_ledLightList);
+    JsonArray _lightList=_root[value_lightInfo].to<JsonArray>();
 
     for (auto var : lightMap)
     {
@@ -142,8 +143,12 @@ void handlePacket(char *buffer, int len)
 
     JsonArray _lightName = doc[value_ledLightList].as<JsonArray>();
     for (auto var : _lightName)
+    _root[key_type] = send_type_lightInfo;
+    JsonObject _lightInfo=_root[value_lightInfo].to<JsonObject>();
+
+    for (auto var : lightMap)
     {
-      std::string _var=var.as<std::string>();
+      std::string _var=var.first;
       _lightInfo[_var] = brightnessMap[_var];
     }
 
@@ -210,9 +215,9 @@ void setup()
   ESP32PWM::allocateTimer(2);
   ESP32PWM::allocateTimer(3);
 
-  m_pwm_13.attachPin(13, 10000, 10);
-  m_pwm_12.attachPin(12, 10000, 10);
-  m_pwm_14.attachPin(14, 10000, 10);
+  m_pwm_13->attachPin(13, 10000, 10);
+  m_pwm_12->attachPin(12, 10000, 10);
+  m_pwm_14->attachPin(14, 10000, 10);
 
   pinMode(2, OUTPUT);
 
