@@ -17,18 +17,16 @@ const int revPort = 56696;
 const int sendPort = 56698;
 
 const std::string key_type = "type";
-const std::string rev_type_deviceList = "deviceList";
-const std::string rev_type_lightInfo = "lightInfo";
-const std::string send_type_lightInfo = "lightInfo";
-const std::string send_type_deviceList = "deviceList";
-const std::string send_type_querylightInfo = "querylightInfo";
+const std::string type_scanDeviceList = "ScanDeviceList";
+const std::string type_setLampBrightness = "SetLampBrightness";
+const std::string type_queryLampBrightness = "QuerylightInfo";
 
 const std::string value_localip = "localip";
 const std::string value_brightness = "brightness";
 const std::string value_model = "model";
 const std::string value_deviceIp = "deviceIp";
 const std::string value_deviceName = "deviceName";
-const std::string value_lightInfo = "lightInfo";
+const std::string value_ledLightList = "lightInfo";
 
 const std::string specialConnector = "*&*";
 
@@ -75,14 +73,14 @@ void handlePacket(char *buffer, int len)
   }
 
   std::string _type = doc[key_type];
-  if (_type == rev_type_lightInfo)
+  if (_type == type_setLampBrightness)
   {
     /*
-    {"type":"rev_type_lightInfo",
-    "value_lightInfo":{"12":33,"13":45}
+    {"type":"type_setLampBrightness",
+    "value_brightness":{"12":33,"13":45}
     }
     */
-    JsonObject _lightInfo = doc[value_lightInfo].as<JsonObject>();
+    JsonObject _lightInfo = doc[value_brightness].as<JsonObject>();
     for (auto var : _lightInfo)
     {
       std::string _key = var.key().c_str();
@@ -92,21 +90,21 @@ void handlePacket(char *buffer, int len)
     }
     Serial.printf("%s\n", value_brightness.c_str());
   }
-  else if (_type == rev_type_deviceList)
+  else if (_type == type_scanDeviceList)
   {
-    /*{"type":"send_type_deviceList",
+    /*{"type":"type_scanDeviceList",
     "value_deviceName":"flower",
     "value_deviceIp":"127.0.0.1",
-    "value_lightInfo":[
+    "value_ledLightList":[
     "12","13"
     ]
     }*/
     JsonDocument _senddoc;
     JsonObject _root = _senddoc.to<JsonObject>();
-    _root[key_type] = send_type_deviceList;
+    _root[key_type] = type_scanDeviceList;
     _root[value_deviceName] = "flower";
     _root[value_deviceIp] = WiFi.localIP().toString();
-    JsonArray _lightList=_root.createNestedArray(value_lightInfo);
+    JsonArray _lightList=_root.createNestedArray(value_ledLightList);
 
     for (auto var : lightMap)
     {
@@ -124,25 +122,25 @@ void handlePacket(char *buffer, int len)
     udp.write((uint8_t *)jsonData.c_str(), jsonData.length());
     udp.endPacket();
   }
-  else if (_type == send_type_querylightInfo)
+  else if (_type == type_queryLampBrightness)
   {
     /*
     {
-    "value_lightInfo":["12","13"]
+    "value_ledLightList":["12","13"]
     }
     */
     /*
     {
     "type":"send_type_lightInfo",
-    "value_lightInfo":{"12":12,"13,33"}
+    "value_ledLightList":{"12":12,"13":33}
     }
     */
     JsonDocument _senddoc;
     JsonObject _root = _senddoc.to<JsonObject>();
-    _root[key_type] = send_type_lightInfo;
-    JsonObject _lightInfo=_root.createNestedObject(value_lightInfo);
+    _root[key_type] = type_queryLampBrightness;
+    JsonObject _lightInfo=_root.createNestedObject(value_ledLightList);
 
-    JsonArray _lightName = doc[value_lightInfo].as<JsonArray>();
+    JsonArray _lightName = doc[value_ledLightList].as<JsonArray>();
     for (auto var : _lightName)
     {
       std::string _var=var.as<std::string>();
