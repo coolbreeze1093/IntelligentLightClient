@@ -104,8 +104,8 @@ void handlePacket(char *buffer, int len)
     _root[key_type] = type_scanDeviceList;
     _root[value_deviceName] = "flower";
     _root[value_deviceIp] = WiFi.localIP().toString();
-    JsonArray _lightList=_root.createNestedArray(value_ledLightList);
-    JsonArray _lightList=_root[value_lightInfo].to<JsonArray>();
+    JsonArray _lightList=_root[value_ledLightList].to<JsonArray>();
+
 
     for (auto var : lightMap)
     {
@@ -139,12 +139,7 @@ void handlePacket(char *buffer, int len)
     JsonDocument _senddoc;
     JsonObject _root = _senddoc.to<JsonObject>();
     _root[key_type] = type_queryLampBrightness;
-    JsonObject _lightInfo=_root.createNestedObject(value_ledLightList);
-
-    JsonArray _lightName = doc[value_ledLightList].as<JsonArray>();
-    for (auto var : _lightName)
-    _root[key_type] = send_type_lightInfo;
-    JsonObject _lightInfo=_root[value_lightInfo].to<JsonObject>();
+    JsonObject _lightInfo=_root[value_ledLightList].to<JsonObject>();
 
     for (auto var : lightMap)
     {
