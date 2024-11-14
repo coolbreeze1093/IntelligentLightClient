@@ -38,7 +38,7 @@ std::map<std::string, int> brightnessMap;
 
 bool isConnectedToLight = false;
 
-TaskHandle_t udpTaskHandle = NULL;
+TaskHandle_t *udpTaskHandle = NULL;
 
 void setupWiFi()
 {
@@ -85,12 +85,12 @@ void handleScanDeviceList(const JsonObject& doc) {
     "12","13"
     ]
     }*/
-  JsonDocument sendDoc(512);
+  JsonDocument sendDoc;
   JsonObject root = sendDoc.to<JsonObject>();
   root[key_type] = type_scanDeviceList;
   root[value_deviceName] = "flower";
   root[value_deviceIp] = WiFi.localIP().toString();
-  JsonArray lightList = root.createNestedArray(value_ledLightList);
+  JsonArray lightList = root[value_ledLightList].to<JsonArray>();
 
   for (const auto& var : lightMap) lightList.add(var.first);
   
@@ -99,7 +99,7 @@ void handleScanDeviceList(const JsonObject& doc) {
   String jsonData;
   serializeJson(sendDoc, jsonData);
   udp.beginPacket(ip, sendPort);
-  udp.write(jsonData.c_str());
+  udp.write((uint8_t *)jsonData.c_str(), jsonData.length());
   udp.endPacket();
 }
 
@@ -115,10 +115,10 @@ void handleQueryBrightness(const JsonObject& doc) {
     "value_ledLightList":{"12":12,"13":33}
     }
     */
-  JsonDocument sendDoc(512);
+  JsonDocument sendDoc;
   JsonObject root = sendDoc.to<JsonObject>();
   root[key_type] = type_queryLampBrightness;
-  JsonObject lightInfo = root.createNestedObject(value_ledLightList);
+  JsonObject lightInfo = root[value_ledLightList].to<JsonObject>();
 
   for (const auto& var : brightnessMap) lightInfo[var.first] = var.second;
   
@@ -127,13 +127,13 @@ void handleQueryBrightness(const JsonObject& doc) {
   String jsonData;
   serializeJson(sendDoc, jsonData);
   udp.beginPacket(ip, sendPort);
-  udp.write(jsonData.c_str());
+  udp.write((uint8_t *)jsonData.c_str(), jsonData.length());
   udp.endPacket();
 }
 
 void handlePacket(char *buffer, int len)
 {
-  JsonDocument doc(512);
+  JsonDocument doc;
   DeserializationError error = deserializeJson(doc, buffer);
   if (error)
   {
@@ -181,7 +181,7 @@ void udpReceiveTask(void *param)
         if (len > 0)
         {
           buffer[len] = '\0';
-          log(("Received packet from"+udp.remoteIP().toString()+std::to_string(udp.remotePort())).c_str());
+          log(("Received packet from IP:"+std::string(udp.remoteIP().toString().c_str())+"  port:"+std::to_string(udp.remotePort())).c_str());
           handlePacket(buffer, len);
         }
       }
@@ -203,9 +203,9 @@ void setup()
   ESP32PWM::allocateTimer(2);
   ESP32PWM::allocateTimer(3);
 
-  m_pwm_13->attachPin(13, 10000, 10);
-  m_pwm_12->attachPin(12, 10000, 10);
-  m_pwm_14->attachPin(14, 10000, 10);
+  m_pwm_13->attachPin(13, 5000, 10);
+  m_pwm_12->attachPin(12, 5000, 10);
+  m_pwm_14->attachPin(14, 5000, 10);
 
   pinMode(2, OUTPUT);
 
@@ -219,10 +219,10 @@ void setup()
 
 void loop()
 {
-  digitalWrite(2, isConnectedToLight ? HIGH : LOW);
+  
   if(!isConnectedToLight)
   {
-    delay(5000);
+    delay(10000);
   }
   if(!isConnectedToLight)
   {
@@ -234,6 +234,8 @@ void loop()
       log("Task creation failed\n");
     }
   }
+
+  digitalWrite(2, isConnectedToLight ? HIGH : LOW);
   
   delay(500);
 }

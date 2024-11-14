@@ -29,11 +29,11 @@ std::vector<std::string> splitString(const std::string &str, const std::string &
     return tokens;
 }
 
-#define Debug
+#define Debug1
 
 void log(const char*str)
 {
     #ifdef Debug
-        Serial.printf(str);
+        Serial.println(str);
     #endif
 }
