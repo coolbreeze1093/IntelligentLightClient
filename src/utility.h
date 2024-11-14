@@ -28,3 +28,12 @@ std::vector<std::string> splitString(const std::string &str, const std::string &
     tokens.push_back(str.substr(start));
     return tokens;
 }
+
+#define Debug
+
+void log(const char*str)
+{
+    #ifdef Debug
+        Serial.printf(str);
+    #endif
+}

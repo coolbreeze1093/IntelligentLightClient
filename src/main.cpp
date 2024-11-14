@@ -38,6 +38,8 @@ std::map<std::string, int> brightnessMap;
 
 bool isConnectedToLight = false;
 
+TaskHandle_t udpTaskHandle = NULL;
+
 void setupWiFi()
 {
   udp.stop();
@@ -48,84 +50,61 @@ void setupWiFi()
   while (WiFi.status() != WL_CONNECTED)
   {
     isConnectedToLight = false;
-    delay(500);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     Serial.print(".");
   }
 
   isConnectedToLight = true;
 
-  WiFi.setAutoReconnect(true);
+  //WiFi.setAutoReconnect(true);
   Serial.println("\nConnected to WiFi!");
-  delay(1000);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   udp.begin(revPort);
 }
 
-void handlePacket(char *buffer, int len)
-{
-  JsonDocument doc;
-  DeserializationError error = deserializeJson(doc, buffer);
-  if (error)
-  {
-    Serial.print(F("deserializeJson() failed: "));
-    Serial.println(error.f_str());
-    return;
-  }
-
-  std::string _type = doc[key_type];
-  if (_type == type_setLampBrightness)
-  {
-    /*
+void handleSetBrightness(const JsonObject& lightInfo) {
+  /*
     {"type":"type_setLampBrightness",
     "value_brightness":{"12":33,"13":45}
     }
     */
-    JsonObject _lightInfo = doc[value_brightness].as<JsonObject>();
-    for (auto var : _lightInfo)
-    {
-      std::string _key = var.key().c_str();
-      int _value = var.value().as<int>();
-      brightnessMap[_key] = _value;
-      lightMap[_key]->write(_value);
-    }
-    Serial.printf("%s\n", value_brightness.c_str());
+  for (auto var : lightInfo) {
+    std::string key = var.key().c_str();
+    int value = var.value().as<int>();
+    brightnessMap[key] = value;
+    if (lightMap[key]) lightMap[key]->write(value);
   }
-  else if (_type == type_scanDeviceList)
-  {
-    /*{"type":"type_scanDeviceList",
+}
+
+void handleScanDeviceList(const JsonObject& doc) {
+  /*{"type":"type_scanDeviceList",
     "value_deviceName":"flower",
     "value_deviceIp":"127.0.0.1",
     "value_ledLightList":[
     "12","13"
     ]
     }*/
-    JsonDocument _senddoc;
-    JsonObject _root = _senddoc.to<JsonObject>();
-    _root[key_type] = type_scanDeviceList;
-    _root[value_deviceName] = "flower";
-    _root[value_deviceIp] = WiFi.localIP().toString();
-    JsonArray _lightList=_root[value_ledLightList].to<JsonArray>();
+  JsonDocument sendDoc(512);
+  JsonObject root = sendDoc.to<JsonObject>();
+  root[key_type] = type_scanDeviceList;
+  root[value_deviceName] = "flower";
+  root[value_deviceIp] = WiFi.localIP().toString();
+  JsonArray lightList = root.createNestedArray(value_ledLightList);
 
+  for (const auto& var : lightMap) lightList.add(var.first);
+  
+  IPAddress ip;
+  ip.fromString(doc[value_localip].as<const char*>());
+  String jsonData;
+  serializeJson(sendDoc, jsonData);
+  udp.beginPacket(ip, sendPort);
+  udp.write(jsonData.c_str());
+  udp.endPacket();
+}
 
-    for (auto var : lightMap)
-    {
-      _lightList.add<std::string>(var.first);
-    }
-
-    String _remotip = doc[value_localip];
-
-    IPAddress _ipa;
-    _ipa.fromString(_remotip.c_str());
-    String jsonData;
-    serializeJson(_senddoc, jsonData);
-
-    udp.beginPacket(_ipa, sendPort);
-    udp.write((uint8_t *)jsonData.c_str(), jsonData.length());
-    udp.endPacket();
-  }
-  else if (_type == type_queryLampBrightness)
-  {
-    /*
+void handleQueryBrightness(const JsonObject& doc) {
+  /*
     {
     "value_ledLightList":["12","13"]
     }
@@ -136,27 +115,40 @@ void handlePacket(char *buffer, int len)
     "value_ledLightList":{"12":12,"13":33}
     }
     */
-    JsonDocument _senddoc;
-    JsonObject _root = _senddoc.to<JsonObject>();
-    _root[key_type] = type_queryLampBrightness;
-    JsonObject _lightInfo=_root[value_ledLightList].to<JsonObject>();
+  JsonDocument sendDoc(512);
+  JsonObject root = sendDoc.to<JsonObject>();
+  root[key_type] = type_queryLampBrightness;
+  JsonObject lightInfo = root.createNestedObject(value_ledLightList);
 
-    for (auto var : lightMap)
-    {
-      std::string _var=var.first;
-      _lightInfo[_var] = brightnessMap[_var];
-    }
+  for (const auto& var : brightnessMap) lightInfo[var.first] = var.second;
+  
+  IPAddress ip;
+  ip.fromString(doc[value_localip].as<const char*>());
+  String jsonData;
+  serializeJson(sendDoc, jsonData);
+  udp.beginPacket(ip, sendPort);
+  udp.write(jsonData.c_str());
+  udp.endPacket();
+}
 
-    String _remotip = doc[value_localip];
+void handlePacket(char *buffer, int len)
+{
+  JsonDocument doc(512);
+  DeserializationError error = deserializeJson(doc, buffer);
+  if (error)
+  {
+    log("deserializeJson() failed: ");
+    log(error.c_str());
+    return;
+  }
 
-    IPAddress _ipa;
-    _ipa.fromString(_remotip.c_str());
-    String jsonData;
-    serializeJson(_senddoc, jsonData);
-
-    udp.beginPacket(_ipa, sendPort);
-    udp.write((uint8_t *)jsonData.c_str(), jsonData.length());
-    udp.endPacket();
+  std::string type = doc[key_type].as<std::string>();
+  if (type == type_setLampBrightness) {
+    handleSetBrightness(doc[value_brightness].as<JsonObject>());
+  } else if (type == type_scanDeviceList) {
+    handleScanDeviceList(doc.as<JsonObject>());
+  } else if (type == type_queryLampBrightness) {
+    handleQueryBrightness(doc.as<JsonObject>());
   }
 }
 
@@ -164,19 +156,20 @@ void reconnectWiFi()
 {
   if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("WiFi disconnected, attempting to reconnect...");
+    log("WiFi disconnected, attempting to reconnect...");
     setupWiFi();
   }
 }
 
 void udpReceiveTask(void *param)
 {
-  char buffer[255];
+  setupWiFi();
+  char buffer[512];
   while (true)
   {
     if (WiFi.status() == WL_DISCONNECTED)
     {
-      delay(2000);
+      vTaskDelay(2000 / portTICK_PERIOD_MS);
       reconnectWiFi();
     }
     else if (WiFi.status() == WL_CONNECTED)
@@ -188,11 +181,11 @@ void udpReceiveTask(void *param)
         if (len > 0)
         {
           buffer[len] = '\0';
-          Serial.printf("Received packet from %s:%d\n", udp.remoteIP().toString().c_str(), udp.remotePort());
+          log(("Received packet from"+udp.remoteIP().toString()+std::to_string(udp.remotePort())).c_str());
           handlePacket(buffer, len);
         }
       }
-      vTaskDelay(10 / portTICK_PERIOD_MS);
+      vTaskDelay(2 / portTICK_PERIOD_MS);
     }
     else
     {
@@ -203,7 +196,7 @@ void udpReceiveTask(void *param)
 void setup()
 {
   Serial.begin(115200);
-  setupWiFi();
+  
 
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
@@ -216,19 +209,31 @@ void setup()
 
   pinMode(2, OUTPUT);
 
-  xTaskCreatePinnedToCore(udpReceiveTask, "UDP Receive Task", 4096, NULL, 1, NULL, 1);
+  BaseType_t result = xTaskCreatePinnedToCore(udpReceiveTask, "UDP Receive Task", 4096, NULL, 1, udpTaskHandle, 1);
+  if (result != pdPASS) {
+    // 处理任务创建失败的情况
+    log("Task creation failed\n");
+  }
+
 }
 
 void loop()
 {
-  // 其他代码
-  if (isConnectedToLight)
+  digitalWrite(2, isConnectedToLight ? HIGH : LOW);
+  if(!isConnectedToLight)
   {
-    digitalWrite(2, HIGH);
+    delay(5000);
   }
-  else
+  if(!isConnectedToLight)
   {
-    digitalWrite(2, LOW);
+    vTaskDelete(udpTaskHandle);
+    delay(2000);
+    BaseType_t result = xTaskCreatePinnedToCore(udpReceiveTask, "UDP Receive Task", 4096, NULL, 1, udpTaskHandle, 1);
+    if (result != pdPASS) {
+      // 处理任务创建失败的情况
+      log("Task creation failed\n");
+    }
   }
+  
   delay(500);
 }
